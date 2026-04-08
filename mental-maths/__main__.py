@@ -244,8 +244,10 @@ def run_single_select(stdscr, title: str, options: List[str], initial: int = 0) 
 # ─── Menu: multi-select ────────────────────────────────────────────────────────
 
 def run_multiselect(stdscr, title: str, options: List[str],
-                    preselected: Optional[List[int]] = None) -> Optional[List[int]]:
-    """SPACE toggles, ENTER confirms. Returns sorted indices, None on v (viz). Raises QuitGame on q."""
+                    preselected: Optional[List[int]] = None,
+                    guest: bool = False) -> Optional[Tuple[List[int], bool]]:
+    """SPACE toggles, ENTER confirms, g toggles guest mode.
+    Returns (sorted indices, guest_mode), None on v (viz). Raises QuitGame on q."""
     cursor = 0
     selected: set = set(preselected or [])
     stdscr.nodelay(False)
@@ -254,7 +256,7 @@ def run_multiselect(stdscr, title: str, options: List[str],
         h, w = stdscr.getmaxyx()
         _box(stdscr)
         _center(stdscr, 1, title, curses.A_BOLD | curses.color_pair(2))
-        _center(stdscr, 2, "j/k navigate   SPACE toggle   ENTER confirm   v performance   q quit",
+        _center(stdscr, 2, "j/k navigate   SPACE toggle   ENTER confirm   g guest   v performance   q quit",
                 curses.A_DIM)
         max_opt = max(len(o) for o in options)
         for i, opt in enumerate(options):
@@ -264,6 +266,9 @@ def run_multiselect(stdscr, title: str, options: List[str],
                     curses.A_REVERSE | curses.A_BOLD if i == cursor else 0)
         confirm_attr = (curses.A_BOLD | curses.color_pair(1)) if selected else curses.A_DIM
         _center(stdscr, 4 + len(options) + 1, "[ Confirm ]", confirm_attr)
+        guest_label = "[ Guest Mode: ON  ]" if guest else "[ Guest Mode: OFF ]"
+        guest_attr  = curses.color_pair(4) | curses.A_BOLD if guest else curses.A_DIM
+        _center(stdscr, 4 + len(options) + 2, guest_label, guest_attr)
         _push(stdscr)
         key = stdscr.getch()
         if key in (curses.KEY_UP, ord('k')):
@@ -274,7 +279,9 @@ def run_multiselect(stdscr, title: str, options: List[str],
             selected ^= {cursor}
         elif key in (10, 13, curses.KEY_ENTER):
             if selected:
-                return sorted(selected)
+                return (sorted(selected), guest)
+        elif key in (ord('g'), ord('G')):
+            guest = not guest
         elif key in (ord('v'), ord('V')):
             return None   # caller shows viz then comes back
         elif key in (ord('q'), ord('Q')):
@@ -869,7 +876,8 @@ def _q_line(q: Question) -> str:
     return line
 
 
-def show_results(stdscr, questions: List[Question], sessions: list) -> str:
+def show_results(stdscr, questions: List[Question], sessions: list,
+                 guest_mode: bool = False) -> str:
     """Returns 'again', 'menu', or 'quit'."""
     curses.curs_set(0)
     stdscr.nodelay(False)
@@ -885,6 +893,8 @@ def show_results(stdscr, questions: List[Question], sessions: list) -> str:
         pct     = correct / total * 100 if total else 0
         _center(stdscr, 1, ' RESULTS ', curses.A_BOLD | curses.color_pair(2))
         _center(stdscr, 3, f"{correct} / {total} correct  ({pct:.0f}%)", curses.A_BOLD)
+        if guest_mode:
+            _center(stdscr, 4, '(guest mode — results not saved)', curses.color_pair(4))
 
         list_y = 5
         list_h = h - 8
@@ -960,12 +970,13 @@ def main(stdscr):
     curses.curs_set(0)
     stdscr.keypad(True)
 
-    data         = _load_data()
-    last_indices = None
-    last_configs = None
-    last_t_idx   = 0
-    action       = 'menu'
-    first_run    = True   # show quick-start once on startup
+    data            = _load_data()
+    last_indices    = None
+    last_configs    = None
+    last_t_idx      = 0
+    last_guest_mode = False
+    action          = 'menu'
+    first_run       = True   # show quick-start once on startup
 
     try:
         while True:
@@ -980,8 +991,9 @@ def main(stdscr):
                         choice = show_quick_start(stdscr, saved_configs, saved_t_idx,
                                                   data.get('sessions', []))
                         if choice == 'quick':
-                            last_configs = saved_configs
-                            last_t_idx   = saved_t_idx
+                            last_configs    = saved_configs
+                            last_t_idx      = saved_t_idx
+                            last_guest_mode = False
                             action = 'again'   # skip menus, go straight to game
                             continue
                     except (KeyError, Exception):
@@ -989,12 +1001,13 @@ def main(stdscr):
                 first_run = False
 
                 # Normal menu flow
-                indices = run_multiselect(
+                result = run_multiselect(
                     stdscr, 'MENTAL MATHS TRAINER — Select Operations',
-                    OPERATIONS, preselected=last_indices)
-                if indices is None:          # v pressed
+                    OPERATIONS, preselected=last_indices, guest=last_guest_mode)
+                if result is None:           # v pressed
                     show_viz(stdscr, data.get('sessions', []))
                     continue
+                indices, guest_mode = result
 
                 prev = {c.operation: c for c in (last_configs or [])}
                 configs: List[OpConfig] = []
@@ -1016,24 +1029,27 @@ def main(stdscr):
                 if t_idx < 0 or t_idx == len(TIME_OPTIONS):
                     continue
 
-                last_indices = indices
-                last_configs = configs
-                last_t_idx   = t_idx
+                last_indices    = indices
+                last_configs    = configs
+                last_t_idx      = t_idx
+                last_guest_mode = guest_mode
 
             # Play
             questions = Game(stdscr, last_configs, TIME_OPTIONS[last_t_idx][1]).run()
 
-            # Persist
-            session = _make_session(questions, last_configs, last_t_idx)
-            if session:
-                data.setdefault('sessions', []).append(session)
-                data['last_config'] = {
-                    't_idx':   last_t_idx,
-                    'configs': [_cfg_to_dict(c) for c in last_configs],
-                }
-                _save_data(data)
+            # Persist (skipped in guest mode)
+            if not last_guest_mode:
+                session = _make_session(questions, last_configs, last_t_idx)
+                if session:
+                    data.setdefault('sessions', []).append(session)
+                    data['last_config'] = {
+                        't_idx':   last_t_idx,
+                        'configs': [_cfg_to_dict(c) for c in last_configs],
+                    }
+                    _save_data(data)
 
-            action = show_results(stdscr, questions, data.get('sessions', []))
+            action = show_results(stdscr, questions, data.get('sessions', []),
+                                  guest_mode=last_guest_mode)
             if action == 'quit':
                 break
 
