@@ -1,0 +1,20 @@
+name: Tests
+
+on: [push]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install portaudio (required by pyaudio)
+        run: sudo apt-get install -y portaudio19-dev
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest tests
