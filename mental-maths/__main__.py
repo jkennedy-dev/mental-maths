@@ -1057,9 +1057,10 @@ def show_viz(stdscr, sessions: list) -> None:
 
 class Game:
     def __init__(self, stdscr, configs: List[OpConfig], time_limit: int,
-                 voice_mode: bool = False):
+                 voice_mode: bool = False, guest_mode: bool = False):
         self.stdscr         = stdscr
         self.configs        = configs
+        self.guest_mode     = guest_mode
         self.time_limit     = time_limit
         self.time_remaining = time_limit
         self.questions: List[Question] = []
@@ -1110,12 +1111,16 @@ class Game:
         timer_attr = (curses.color_pair(3) if remaining <= 10 else
                       curses.color_pair(4) if remaining <= 30 else
                       curses.color_pair(1)) | curses.A_BOLD
-        mic_str = ' [MIC] ' if self.voice_listener else ''
+        mic_str   = ' [MIC] ' if self.voice_listener else ''
+        guest_str = ' [G] ' if self.guest_mode else ''
         try:
             s.addstr(1, 1, score_str, curses.A_BOLD)
+            offset = 1 + len(score_str)
             if mic_str:
-                s.addstr(1, 1 + len(score_str),
-                         mic_str, curses.color_pair(2) | curses.A_BOLD)
+                s.addstr(1, offset, mic_str, curses.color_pair(2) | curses.A_BOLD)
+                offset += len(mic_str)
+            if guest_str:
+                s.addstr(1, offset, guest_str, curses.color_pair(4) | curses.A_BOLD)
             _center(s, 1, ops_str)
             s.addstr(1, w - len(timer_str) - 1, timer_str, timer_attr)
         except curses.error:
@@ -1446,7 +1451,8 @@ def main(stdscr):
 
             # Play
             questions = Game(stdscr, last_configs, TIME_OPTIONS[last_t_idx][1],
-                             voice_mode=last_voice_mode).run()
+                             voice_mode=last_voice_mode,
+                             guest_mode=last_guest_mode).run()
 
             # Persist (skipped in guest mode)
             if not last_guest_mode:
