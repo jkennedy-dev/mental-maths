@@ -1,0 +1,14 @@
+[project]
+name = "mental-maths"
+version = "0.1.0"
+description = "a simple mental maths terminal UI"
+requires-python = ">=3.13"
+dependencies = [
+    "pyaudio>=0.2.14",
+    "vosk>=0.3.45",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
