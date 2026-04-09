@@ -39,6 +39,13 @@ _build_rows   = m._build_rows
 _q_line       = m._q_line
 TIME_OPTIONS  = m.TIME_OPTIONS
 
+_words_to_int        = m._words_to_int
+_parse_spoken_number = m._parse_spoken_number
+_amplify_audio       = m._amplify_audio
+_combine_spoken_nums = m._combine_spoken_nums
+VoiceListener        = m.VoiceListener
+Game                 = m.Game
+
 
 # ===========================================================================
 # OpConfig.label
@@ -610,3 +617,467 @@ class TestQLine:
         line = _q_line(q)
         assert '[+]' in line
         assert '-4' in line
+
+
+# ===========================================================================
+# _words_to_int
+# ===========================================================================
+
+class TestWordsToInt:
+    def test_single_digit(self):
+        assert _words_to_int(['five']) == 5
+
+    def test_zero(self):
+        assert _words_to_int(['zero']) == 0
+
+    def test_teen(self):
+        assert _words_to_int(['thirteen']) == 13
+
+    def test_tens(self):
+        assert _words_to_int(['forty']) == 40
+
+    def test_tens_and_ones(self):
+        assert _words_to_int(['forty', 'two']) == 42
+
+    def test_hundred(self):
+        assert _words_to_int(['one', 'hundred']) == 100
+
+    def test_hundred_and_ones(self):
+        assert _words_to_int(['one', 'hundred', 'and', 'five']) == 105
+
+    def test_hundred_tens_ones(self):
+        assert _words_to_int(['one', 'hundred', 'and', 'forty', 'two']) == 142
+
+    def test_numeric_string(self):
+        assert _words_to_int(['42']) == 42
+
+    def test_empty_returns_none(self):
+        assert _words_to_int([]) is None
+
+    def test_unknown_word_returns_none(self):
+        assert _words_to_int(['hello']) is None
+
+
+# ===========================================================================
+# _parse_spoken_number
+# ===========================================================================
+
+class TestParseSpokenNumber:
+    def test_single_digit_word(self):
+        assert _parse_spoken_number('five') == '5'
+
+    def test_zero(self):
+        assert _parse_spoken_number('zero') == '0'
+
+    def test_teen(self):
+        assert _parse_spoken_number('thirteen') == '13'
+
+    def test_tens(self):
+        assert _parse_spoken_number('forty') == '40'
+
+    def test_compound(self):
+        assert _parse_spoken_number('forty two') == '42'
+
+    def test_hundred(self):
+        assert _parse_spoken_number('one hundred') == '100'
+
+    def test_hundred_compound(self):
+        assert _parse_spoken_number('one hundred and forty two') == '142'
+
+    def test_negative_minus(self):
+        assert _parse_spoken_number('minus five') == '-5'
+
+    def test_negative_word(self):
+        assert _parse_spoken_number('negative three') == '-3'
+
+    def test_decimal(self):
+        assert _parse_spoken_number('three point five') == '3.5'
+
+    def test_decimal_two_places(self):
+        assert _parse_spoken_number('one point two five') == '1.25'
+
+    def test_negative_decimal(self):
+        assert _parse_spoken_number('minus three point five') == '-3.5'
+
+    def test_enter_command(self):
+        assert _parse_spoken_number('enter') == 'ENTER'
+
+    def test_submit_command(self):
+        assert _parse_spoken_number('submit') == 'ENTER'
+
+    def test_confirm_command(self):
+        assert _parse_spoken_number('confirm') == 'ENTER'
+
+    def test_done_command(self):
+        assert _parse_spoken_number('done') == 'ENTER'
+
+    def test_numeric_string(self):
+        assert _parse_spoken_number('42') == '42'
+
+    def test_numeric_string_negative(self):
+        assert _parse_spoken_number('-5') == '-5'
+
+    def test_numeric_string_decimal(self):
+        assert _parse_spoken_number('3.5') == '3.5'
+
+    def test_empty_returns_none(self):
+        assert _parse_spoken_number('') is None
+
+    def test_whitespace_returns_none(self):
+        assert _parse_spoken_number('   ') is None
+
+    def test_unrecognized_returns_none(self):
+        assert _parse_spoken_number('hello world') is None
+
+    def test_case_insensitive(self):
+        assert _parse_spoken_number('FORTY TWO') == '42'
+
+    def test_nineteen(self):
+        assert _parse_spoken_number('nineteen') == '19'
+
+
+# ===========================================================================
+# VoiceListener
+# ===========================================================================
+
+class TestVoiceListener:
+    def test_get_nowait_empty_returns_none(self):
+        listener = VoiceListener()
+        assert listener.get_nowait() is None
+
+    def test_events_queue_fifo(self):
+        listener = VoiceListener()
+        listener._events.put(('final', '42'))
+        listener._events.put(('enter', ''))
+        assert listener.get_nowait() == ('final', '42')
+        assert listener.get_nowait() == ('enter', '')
+        assert listener.get_nowait() is None
+
+    def test_stop_sets_flag(self):
+        listener = VoiceListener()
+        assert not listener._stop.is_set()
+        listener.stop()
+        assert listener._stop.is_set()
+
+    def test_start_fails_when_unavailable(self, monkeypatch):
+        monkeypatch.setattr(m, '_VOICE_AVAILABLE', False)
+        listener = VoiceListener()
+        assert listener.start() is False
+        assert listener.error is not None
+
+    def test_start_fails_without_model(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(m, '_VOICE_AVAILABLE', True)
+        listener = VoiceListener(model_dir=tmp_path / 'no-model')
+        assert listener.start() is False
+        assert listener.error is not None
+
+    def test_start_ok_with_model_dir(self, tmp_path, monkeypatch):
+        """start() returns True when model dir exists and dependencies available."""
+        monkeypatch.setattr(m, '_VOICE_AVAILABLE', True)
+        model_dir = tmp_path / 'model'
+        model_dir.mkdir()
+        listener = VoiceListener(model_dir=model_dir)
+        # Patch _loop so no real audio hardware is accessed.
+        listener._loop = lambda: None
+        assert listener.start() is True
+        listener.stop()
+
+
+# ===========================================================================
+# Game._process_voice_events
+# ===========================================================================
+
+class TestGameVoiceEvents:
+    def _make_game(self):
+        from unittest.mock import MagicMock
+        stdscr = MagicMock()
+        stdscr.getmaxyx.return_value = (24, 80)
+        cfg = OpConfig('Addition', digits=1, decimals=0)
+        return Game(stdscr, [cfg], 60)
+
+    def test_no_listener_returns_false(self):
+        g = self._make_game()
+        g.voice_listener = None
+        assert g._process_voice_events() is False
+
+    def test_returns_true_when_events_processed(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('partial', '4'), None]
+        g.voice_listener = listener
+        assert g._process_voice_events() is True
+
+    def test_returns_false_when_queue_empty(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        listener = MagicMock()
+        listener.get_nowait.return_value = None
+        g.voice_listener = listener
+        assert g._process_voice_events() is False
+
+    def test_no_listener_is_noop(self):
+        g = self._make_game()
+        g.voice_listener = None
+        g._process_voice_events()  # must not raise
+
+    def test_final_number_sets_buf(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('final', '42'), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == '42'
+        assert g.voice_partial == ''
+
+    def test_partial_sets_voice_partial(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('partial', '40'), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.voice_partial == '40'
+        assert g.buf == ''
+
+    def test_enter_submits_buffer(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        g.buf = '8'
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('enter', ''), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == ''
+        assert len(g.questions) == 1
+
+    def test_enter_ignored_when_buf_empty(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        g.buf = ''
+        g.voice_partial = ''
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('enter', ''), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert len(g.questions) == 0
+
+    def test_enter_clears_voice_partial(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        g.buf = '5'
+        g.voice_partial = '5'
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('enter', ''), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.voice_partial == ''
+
+    def test_slow_speech_combines_finals(self):
+        """Two separate finals ('forty' then 'two') should combine to '42'."""
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('final', '40'), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == '40'
+
+        listener.get_nowait.side_effect = [('final', '2'), None]
+        g._process_voice_events()
+        assert g.buf == '42'
+
+    def test_enter_commits_pending_partial(self):
+        """Enter should commit voice_partial into buf before submitting."""
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        g.buf = '40'
+        g.voice_partial = '2'
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [('enter', ''), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        # Submitted answer should be '42', not '40'
+        assert len(g.questions) == 1
+        assert g.questions[0].user_answer == '42'
+        assert g.voice_partial == ''
+
+    def test_multiple_events_in_order(self):
+        from unittest.mock import MagicMock
+        g = self._make_game()
+        listener = MagicMock()
+        listener.get_nowait.side_effect = [
+            ('partial', '4'),
+            ('final', '42'),
+            None,
+        ]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == '42'
+        assert g.voice_partial == ''
+
+
+# ===========================================================================
+# _combine_spoken_nums
+# ===========================================================================
+
+class TestCombineSpokenNums:
+    # ---- round-number arithmetic combination --------------------------------
+    def test_tens_plus_units(self):
+        assert _combine_spoken_nums('40', '2') == '42'
+
+    def test_twenty_plus_units(self):
+        assert _combine_spoken_nums('20', '5') == '25'
+
+    def test_hundred_plus_tens_units(self):
+        assert _combine_spoken_nums('100', '42') == '142'
+
+    def test_partial_hundred_plus_units(self):
+        assert _combine_spoken_nums('140', '2') == '142'
+
+    def test_thousand_plus_hundreds(self):
+        assert _combine_spoken_nums('1000', '200') == '1200'
+
+    def test_ten_plus_units(self):
+        assert _combine_spoken_nums('10', '5') == '15'
+
+    # ---- non-continuation replaces ------------------------------------------
+    def test_same_magnitude_replaces(self):
+        # '42' followed by '43' — user is correcting their answer
+        assert _combine_spoken_nums('42', '43') == '43'
+
+    def test_single_digit_after_multi_replaces(self):
+        # '42' is not a round multiple, so '3' replaces it
+        assert _combine_spoken_nums('42', '3') == '3'
+
+    def test_larger_incoming_replaces(self):
+        assert _combine_spoken_nums('2', '5') == '5'
+
+    def test_non_round_tens_replaces(self):
+        # 43 % 10 = 3 ≠ 0 so incoming replaces
+        assert _combine_spoken_nums('43', '2') == '2'
+
+    # ---- non-integer restart ------------------------------------------------
+    def test_decimal_existing_restarts(self):
+        assert _combine_spoken_nums('3.5', '2') == '2'
+
+    def test_negative_existing_restarts(self):
+        assert _combine_spoken_nums('-5', '3') == '3'
+
+    def test_decimal_incoming_restarts(self):
+        assert _combine_spoken_nums('40', '2.5') == '2.5'
+
+    # ---- empty existing -----------------------------------------------------
+    def test_empty_existing_returns_incoming(self):
+        # Not called with empty existing in practice, but defensive check.
+        assert _combine_spoken_nums('', '42') == '42'
+
+
+# ===========================================================================
+# _amplify_audio
+# ===========================================================================
+
+class TestAmplifyAudio:
+    def _pack(self, samples):
+        import array
+        return array.array('h', samples).tobytes()
+
+    def _unpack(self, data):
+        import array
+        return list(array.array('h', data))
+
+    def test_amplifies_by_gain(self):
+        data = self._pack([100, 200, -100])
+        result = self._unpack(_amplify_audio(data, 3))
+        assert result == [300, 600, -300]
+
+    def test_clamps_positive_overflow(self):
+        data = self._pack([20000])
+        result = self._unpack(_amplify_audio(data, 4))
+        assert result == [32767]
+
+    def test_clamps_negative_overflow(self):
+        data = self._pack([-20000])
+        result = self._unpack(_amplify_audio(data, 4))
+        assert result == [-32768]
+
+    def test_gain_one_is_unchanged(self):
+        samples = [1000, -500, 0, 32767, -32768]
+        data = self._pack(samples)
+        assert self._unpack(_amplify_audio(data, 1)) == samples
+
+    def test_zero_samples_unchanged(self):
+        data = self._pack([0, 0, 0])
+        assert self._unpack(_amplify_audio(data, 10)) == [0, 0, 0]
+
+
+# ===========================================================================
+# VoiceListener._emit_text
+# ===========================================================================
+
+class TestEmitText:
+    def _listener(self):
+        return VoiceListener()
+
+    def test_number_final(self):
+        l = self._listener()
+        l._emit_text('forty two', final=True)
+        assert l.get_nowait() == ('final', '42')
+        assert l.get_nowait() is None
+
+    def test_number_partial(self):
+        l = self._listener()
+        l._emit_text('forty', final=False)
+        assert l.get_nowait() == ('partial', '40')
+
+    def test_enter_only(self):
+        l = self._listener()
+        l._emit_text('enter', final=True)
+        assert l.get_nowait() == ('enter', '')
+        assert l.get_nowait() is None
+
+    def test_number_then_enter_combined(self):
+        """'forty two enter' in one utterance emits number then enter."""
+        l = self._listener()
+        l._emit_text('forty two enter', final=True)
+        assert l.get_nowait() == ('final', '42')
+        assert l.get_nowait() == ('enter', '')
+        assert l.get_nowait() is None
+
+    def test_number_then_submit_combined(self):
+        l = self._listener()
+        l._emit_text('eight submit', final=True)
+        assert l.get_nowait() == ('final', '8')
+        assert l.get_nowait() == ('enter', '')
+
+    def test_partial_number_then_enter_no_submit(self):
+        # Enter must NOT fire on a partial — only on finals — to prevent the
+        # same utterance queuing multiple enter events as vosk refines it.
+        l = self._listener()
+        l._emit_text('forty enter', final=False)
+        assert l.get_nowait() == ('partial', '40')
+        assert l.get_nowait() is None   # no enter from partial
+
+    def test_unrecognised_text_emits_nothing(self):
+        l = self._listener()
+        l._emit_text('hello world', final=True)
+        assert l.get_nowait() is None
+
+    def test_empty_text_emits_nothing(self):
+        l = self._listener()
+        l._emit_text('', final=True)
+        assert l.get_nowait() is None
+
+    def test_enter_at_start_emits_enter_not_buf(self):
+        """'enter forty' should produce an enter event, not put 'ENTER' in the buf."""
+        l = self._listener()
+        l._emit_text('enter forty', final=True)
+        assert l.get_nowait() == ('enter', '')
+        assert l.get_nowait() is None  # no spurious number event
+
+    def test_enter_at_start_partial_no_submit(self):
+        # Partial results must never emit enter.
+        l = self._listener()
+        l._emit_text('enter five', final=False)
+        assert l.get_nowait() is None
