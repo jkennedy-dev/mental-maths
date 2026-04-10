@@ -54,23 +54,6 @@ _WORD_TO_NUM: dict = {
     "thousand": 1000,
 }
 
-_SINGLE_DIGIT_WORDS: dict = {
-    "zero": "0",
-    "oh": "0",
-    "nought": "0",
-    "one": "1",
-    "two": "2",
-    "three": "3",
-    "four": "4",
-    "five": "5",
-    "six": "6",
-    "seven": "7",
-    "eight": "8",
-    "nine": "9",
-}
-
-_SUBMIT_WORDS: frozenset = frozenset({"enter"})
-
 
 def _words_to_int(words: list) -> Optional[int]:
     """Convert a list of number words to a non-negative integer, or None if unrecognised."""
@@ -186,8 +169,9 @@ def _parse_spoken_number(text: str) -> Optional[str]:
     if dec_words:
         dec_str = ""
         for w in dec_words:
-            if w in _SINGLE_DIGIT_WORDS:
-                dec_str += _SINGLE_DIGIT_WORDS[w]
+            val = _WORD_TO_NUM.get(w)
+            if val is not None and val <= 9:
+                dec_str += str(val)
             elif w.isdigit() and len(w) == 1:
                 dec_str += w
             else:
@@ -280,9 +264,13 @@ class VoiceListener:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.error: Optional[str] = None
-        self._enter_pending = False    # enter already queued — suppress re-fire
-        self._acted_on_partial = False  # combined partial acted on — suppress real final
-        self._last_combined_num: Optional[str] = None  # previous combined-partial number, for stability check
+        self._enter_pending = False  # enter already queued — suppress re-fire
+        self._acted_on_partial = (
+            False  # combined partial acted on — suppress real final
+        )
+        self._last_combined_num: Optional[str] = (
+            None  # previous combined-partial number, for stability check
+        )
 
     def start(self) -> bool:
         """Start the background recognition thread.  Returns True on success."""
@@ -328,7 +316,7 @@ class VoiceListener:
           on; suppress the real final that vosk will emit for the same utterance.
         """
         words = text.split()
-        has_sub = bool(words) and words[-1] in _SUBMIT_WORDS
+        has_sub = bool(words) and words[-1] == "enter"
         num_words = words[:-1] if has_sub else words
         num_text = " ".join(num_words)
 

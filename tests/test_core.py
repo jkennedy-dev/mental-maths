@@ -453,16 +453,16 @@ class TestMakeSession:
 
     def test_returns_none_for_empty_questions(self):
         cfg = OpConfig("Addition")
-        assert _make_session([], [cfg], 0) is None
+        assert _make_session([], [cfg], 30) is None
 
     def test_basic_session_structure(self):
         cfg = OpConfig("Addition")
         qs = [self._q(cfg.label, True), self._q(cfg.label, False)]
-        sess = _make_session(qs, [cfg], 0)
+        sess = _make_session(qs, [cfg], 30)
         assert sess is not None
         assert sess["total"] == 2
         assert sess["correct"] == 1
-        assert sess["time_limit"] == TIME_OPTIONS[0][1]
+        assert sess["time_limit"] == 30
 
     def test_per_op_aggregation(self):
         add_cfg = OpConfig("Addition")
@@ -472,21 +472,21 @@ class TestMakeSession:
             self._q(add_cfg.label, True),
             self._q(sub_cfg.label, False),
         ]
-        sess = _make_session(qs, [add_cfg, sub_cfg], 1)
+        sess = _make_session(qs, [add_cfg, sub_cfg], 60)
         assert sess["per_op"][add_cfg.label] == {"total": 2, "correct": 2}
         assert sess["per_op"][sub_cfg.label] == {"total": 1, "correct": 0}
 
     def test_configs_serialized(self):
         cfg = OpConfig("Multiplication", operand2_lo=3, operand2_hi=9)
         qs = [self._q(cfg.label, True)]
-        sess = _make_session(qs, [cfg], 0)
+        sess = _make_session(qs, [cfg], 30)
         assert sess["configs"] == [_cfg_to_dict(cfg)]
 
-    def test_time_idx_mapping(self):
+    def test_time_limit_stored(self):
         cfg = OpConfig("Addition")
         qs = [self._q(cfg.label, True)]
-        for i, (_, secs) in enumerate(TIME_OPTIONS):
-            sess = _make_session(qs, [cfg], i)
+        for _, secs in TIME_OPTIONS:
+            sess = _make_session(qs, [cfg], secs)
             assert sess["time_limit"] == secs
 
     def test_timestamp_format(self):
@@ -494,20 +494,20 @@ class TestMakeSession:
 
         cfg = OpConfig("Addition")
         qs = [self._q(cfg.label, True)]
-        sess = _make_session(qs, [cfg], 0)
+        sess = _make_session(qs, [cfg], 30)
         assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", sess["ts"])
 
     def test_all_correct(self):
         cfg = OpConfig("Addition")
         qs = [self._q(cfg.label, True) for _ in range(5)]
-        sess = _make_session(qs, [cfg], 0)
+        sess = _make_session(qs, [cfg], 30)
         assert sess["correct"] == 5
         assert sess["total"] == 5
 
     def test_all_wrong(self):
         cfg = OpConfig("Addition")
         qs = [self._q(cfg.label, False) for _ in range(3)]
-        sess = _make_session(qs, [cfg], 0)
+        sess = _make_session(qs, [cfg], 30)
         assert sess["correct"] == 0
 
 
@@ -705,7 +705,6 @@ class TestParseSpokenNumber:
 
     def test_enter_command(self):
         assert _parse_spoken_number("enter") == "ENTER"
-
 
     def test_numeric_string(self):
         assert _parse_spoken_number("42") == "42"
@@ -1085,7 +1084,7 @@ class TestEmitText:
         listener._emit_text("forty two enter", final=False)
         assert listener.get_nowait() == ("partial", "42")  # changed — reset stability
         listener._emit_text("forty two enter", final=False)
-        assert listener.get_nowait() == ("final", "42")    # stable now
+        assert listener.get_nowait() == ("final", "42")  # stable now
         assert listener.get_nowait() == ("enter", "")
         assert listener.get_nowait() is None
 
@@ -1097,7 +1096,7 @@ class TestEmitText:
         listener._emit_text("forty two enter", final=False)  # second — stable, fires
         listener.get_nowait()  # ('final', '42')
         listener.get_nowait()  # ('enter', '')
-        listener._emit_text("forty two enter", final=True)   # real final — suppressed
+        listener._emit_text("forty two enter", final=True)  # real final — suppressed
         assert listener.get_nowait() is None
 
     def test_standalone_enter_fires_on_partial(self):

@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Optional
 
-from .constants import DATA_FILE, TIME_OPTIONS
+from .constants import DATA_FILE
 from .models import OpConfig
 
 
@@ -42,7 +42,7 @@ def _save_data(data: dict) -> None:
         pass
 
 
-def _make_session(questions: list, configs: list, t_idx: int) -> Optional[dict]:
+def _make_session(questions: list, configs: list, time_limit: int) -> Optional[dict]:
     if not questions:
         return None
     per_op: dict = {}
@@ -53,7 +53,7 @@ def _make_session(questions: list, configs: list, t_idx: int) -> Optional[dict]:
             st["correct"] += 1
     return {
         "ts": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "time_limit": TIME_OPTIONS[t_idx][1],
+        "time_limit": time_limit,
         "total": len(questions),
         "correct": sum(1 for q in questions if q.correct),
         "per_op": per_op,

@@ -33,12 +33,12 @@ def main(stdscr) -> None:
     last_t_idx = 0
     last_guest_mode = False
     last_voice_mode = False
-    action = "menu"
+    skip_menu = False
     first_run = True  # show quick-start once on startup
 
     try:
         while True:
-            if action == "menu":
+            if not skip_menu:
                 # Quick-start prompt on first entry if previous config exists
                 if first_run and data.get("last_config"):
                     first_run = False
@@ -53,9 +53,9 @@ def main(stdscr) -> None:
                             last_configs = saved_configs
                             last_t_idx = saved_t_idx
                             last_guest_mode = False
-                            action = "again"  # skip menus, go straight to game
+                            skip_menu = True
                             continue
-                    except (KeyError, Exception):
+                    except Exception:
                         pass  # corrupt save — fall through to normal menu
                 first_run = False
 
@@ -113,7 +113,9 @@ def main(stdscr) -> None:
 
             # Persist (skipped in guest mode)
             if not last_guest_mode:
-                session = _make_session(questions, last_configs, last_t_idx)
+                session = _make_session(
+                    questions, last_configs, TIME_OPTIONS[last_t_idx][1]
+                )
                 if session:
                     data.setdefault("sessions", []).append(session)
                     data["last_config"] = {
@@ -122,11 +124,12 @@ def main(stdscr) -> None:
                     }
                     _save_data(data)
 
-            action = show_results(
+            result = show_results(
                 stdscr, questions, data.get("sessions", []), guest_mode=last_guest_mode
             )
-            if action == "quit":
+            if result == "quit":
                 break
+            skip_menu = result == "again"
 
     except QuitGame:
         pass
