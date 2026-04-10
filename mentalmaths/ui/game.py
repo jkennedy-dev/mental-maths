@@ -173,13 +173,35 @@ class Game:
         s.noutrefresh()
         curses.doupdate()
 
+    def _handle_backspace(self) -> None:
+        """Clear input in response to a backspace keypress.
+
+        In keyboard mode: remove the last character from buf (standard behaviour).
+        In voice mode: clear both buf and voice_partial entirely, since buf is
+        populated by whole-word recognition rather than keystroke-by-keystroke
+        and character removal has no meaningful semantic in that context.
+        """
+        self.voice_partial = ""
+        if self.voice_listener:
+            self.buf = ""
+        else:
+            self.buf = self.buf[:-1]
+
     def _process_voice_events(self) -> bool:
         """Drain pending voice events and update buf / voice_partial accordingly.
 
         Returns True if at least one event was processed (used by the game loop
         to decide whether to sleep or poll again immediately).
+
+        Also detects a crashed recognition thread: if listener.error is set the
+        listener is retired and the error is surfaced via _voice_error so the UI
+        can display it.
         """
         if not self.voice_listener:
+            return False
+        if self.voice_listener.error is not None:
+            self._voice_error = self.voice_listener.error
+            self.voice_listener = None
             return False
         had_events = False
         while True:
@@ -229,8 +251,7 @@ class Game:
                     # up in rapid succession without visible flicker.
                     time.sleep(0.01 if (self.voice_listener or had_voice) else 0.05)
                 elif key in (curses.KEY_BACKSPACE, 127, 8):
-                    self.voice_partial = ""
-                    self.buf = self.buf[:-1]
+                    self._handle_backspace()
                 elif key in (10, 13, curses.KEY_ENTER) and not self.voice_listener:
                     self.voice_partial = ""
                     self._submit()

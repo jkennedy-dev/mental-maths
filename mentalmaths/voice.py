@@ -90,8 +90,9 @@ def _combine_spoken_nums(existing: str, incoming: str) -> str:
 
     - Round multiple + smaller value → arithmetic sum
         ('40', '2') → '42'   ('100', '42') → '142'   ('140', '2') → '142'
-    - Anything else → digit-by-digit concatenation
-        ('4', '2') → '42'    ('1', '3') → '13'
+    - Anything else (same magnitude, larger incoming, non-round existing)
+      → incoming replaces existing entirely
+        ('42', '3') → '3'    ('2', '5') → '5'
     - If either value is non-integer (decimal/negative) the incoming value
       replaces the existing one entirely.
     """

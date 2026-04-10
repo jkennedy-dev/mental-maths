@@ -803,6 +803,7 @@ class TestGameVoiceEvents:
 
         g = self._make_game()
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("partial", "4"), None]
         g.voice_listener = listener
         assert g._process_voice_events() is True
@@ -812,6 +813,7 @@ class TestGameVoiceEvents:
 
         g = self._make_game()
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.return_value = None
         g.voice_listener = listener
         assert g._process_voice_events() is False
@@ -826,6 +828,7 @@ class TestGameVoiceEvents:
 
         g = self._make_game()
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("final", "42"), None]
         g.voice_listener = listener
         g._process_voice_events()
@@ -837,6 +840,7 @@ class TestGameVoiceEvents:
 
         g = self._make_game()
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("partial", "40"), None]
         g.voice_listener = listener
         g._process_voice_events()
@@ -849,6 +853,7 @@ class TestGameVoiceEvents:
         g = self._make_game()
         g.buf = "8"
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("enter", ""), None]
         g.voice_listener = listener
         g._process_voice_events()
@@ -862,6 +867,7 @@ class TestGameVoiceEvents:
         g.buf = ""
         g.voice_partial = ""
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("enter", ""), None]
         g.voice_listener = listener
         g._process_voice_events()
@@ -874,6 +880,7 @@ class TestGameVoiceEvents:
         g.buf = "5"
         g.voice_partial = "5"
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("enter", ""), None]
         g.voice_listener = listener
         g._process_voice_events()
@@ -885,6 +892,7 @@ class TestGameVoiceEvents:
 
         g = self._make_game()
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("final", "40"), None]
         g.voice_listener = listener
         g._process_voice_events()
@@ -902,6 +910,7 @@ class TestGameVoiceEvents:
         g.buf = "40"
         g.voice_partial = "2"
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [("enter", ""), None]
         g.voice_listener = listener
         g._process_voice_events()
@@ -915,6 +924,7 @@ class TestGameVoiceEvents:
 
         g = self._make_game()
         listener = MagicMock()
+        listener.error = None
         listener.get_nowait.side_effect = [
             ("partial", "4"),
             ("final", "42"),
@@ -923,6 +933,90 @@ class TestGameVoiceEvents:
         g.voice_listener = listener
         g._process_voice_events()
         assert g.buf == "42"
+        assert g.voice_partial == ""
+
+    def test_thread_error_clears_listener_and_stores_message(self):
+        """If the voice thread crashes, _process_voice_events detects it and
+        moves the error message into _voice_error so the UI can display it."""
+        from unittest.mock import MagicMock
+
+        g = self._make_game()
+        listener = MagicMock()
+        listener.error = "Microphone disconnected"
+        listener.get_nowait.return_value = None
+        g.voice_listener = listener
+        result = g._process_voice_events()
+        assert g.voice_listener is None
+        assert g._voice_error == "Microphone disconnected"
+        assert result is False
+
+    def test_thread_error_not_triggered_when_no_error(self):
+        """A healthy listener (error=None) must not be cleared."""
+        from unittest.mock import MagicMock
+
+        g = self._make_game()
+        listener = MagicMock()
+        listener.error = None  # explicitly None — MagicMock auto-attrs are truthy
+        listener.get_nowait.return_value = None
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.voice_listener is listener
+
+
+# ===========================================================================
+# Game._handle_backspace
+# ===========================================================================
+
+
+class TestGameHandleBackspace:
+    def _make_game(self):
+        from unittest.mock import MagicMock
+
+        stdscr = MagicMock()
+        stdscr.getmaxyx.return_value = (24, 80)
+        cfg = OpConfig("Addition", digits=1, decimals=0)
+        return Game(stdscr, [cfg], 60)
+
+    def test_keyboard_mode_removes_last_char(self):
+        g = self._make_game()
+        g.buf = "42"
+        g.voice_listener = None
+        g._handle_backspace()
+        assert g.buf == "4"
+        assert g.voice_partial == ""
+
+    def test_keyboard_mode_on_empty_buf_is_noop(self):
+        g = self._make_game()
+        g.buf = ""
+        g.voice_listener = None
+        g._handle_backspace()
+        assert g.buf == ""
+
+    def test_voice_mode_clears_buf_and_partial(self):
+        """In voice mode the whole buffer is cleared, not just the last char."""
+        from unittest.mock import MagicMock
+
+        g = self._make_game()
+        g.buf = "42"
+        g.voice_partial = "5"
+        listener = MagicMock()
+        listener.error = None
+        g.voice_listener = listener
+        g._handle_backspace()
+        assert g.buf == ""
+        assert g.voice_partial == ""
+
+    def test_voice_mode_clears_partial_only_when_buf_empty(self):
+        from unittest.mock import MagicMock
+
+        g = self._make_game()
+        g.buf = ""
+        g.voice_partial = "40"
+        listener = MagicMock()
+        listener.error = None
+        g.voice_listener = listener
+        g._handle_backspace()
+        assert g.buf == ""
         assert g.voice_partial == ""
 
 
