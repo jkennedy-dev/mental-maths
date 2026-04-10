@@ -40,24 +40,27 @@ def main(stdscr) -> None:
         while True:
             if not skip_menu:
                 # Quick-start prompt on first entry if previous config exists
-                if first_run and data.get("last_config"):
+                if first_run:
                     first_run = False
-                    lc = data["last_config"]
-                    try:
-                        saved_configs = [_dict_to_cfg(c) for c in lc["configs"]]
-                        saved_t_idx = min(lc.get("t_idx", 0), len(TIME_OPTIONS) - 1)
-                        choice = show_quick_start(
-                            stdscr, saved_configs, saved_t_idx, data.get("sessions", [])
-                        )
-                        if choice == "quick":
-                            last_configs = saved_configs
-                            last_t_idx = saved_t_idx
-                            last_guest_mode = False
-                            skip_menu = True
-                            continue
-                    except Exception:
-                        pass  # corrupt save — fall through to normal menu
-                first_run = False
+                    if data.get("last_config"):
+                        lc = data["last_config"]
+                        try:
+                            saved_configs = [_dict_to_cfg(c) for c in lc["configs"]]
+                            saved_t_idx = min(lc.get("t_idx", 0), len(TIME_OPTIONS) - 1)
+                            choice = show_quick_start(
+                                stdscr,
+                                saved_configs,
+                                saved_t_idx,
+                                data.get("sessions", []),
+                            )
+                            if choice == "quick":
+                                last_configs = saved_configs
+                                last_t_idx = saved_t_idx
+                                last_guest_mode = False
+                                skip_menu = True
+                                continue
+                        except Exception:
+                            pass  # corrupt save — fall through to normal menu
 
                 # Normal menu flow
                 result = run_multiselect(

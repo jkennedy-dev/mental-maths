@@ -2,6 +2,7 @@ import curses
 from typing import List, Optional, Tuple
 
 from ..constants import QuitGame, TIME_OPTIONS
+from ..models import OpConfig
 from ..voice import _VOICE_AVAILABLE
 from .helpers import _push, _center, _box
 from .viz import show_viz
@@ -206,8 +207,6 @@ def run_op_config(stdscr, cfg) -> Optional[object]:
             elif _key == "decimals":
                 decimals = max(0, min(3, decimals + delta))
         elif key in (10, 13, curses.KEY_ENTER):
-            from ..models import OpConfig
-
             return OpConfig(op, digits, decimals, op2_lo, op2_hi, bool(allow_neg))
         elif key == 27:
             return None

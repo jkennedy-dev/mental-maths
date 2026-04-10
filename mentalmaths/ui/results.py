@@ -65,7 +65,7 @@ def show_results(
                     except curses.error:
                         pass
 
-            if needs_scroll and max_scroll > 0:
+            if needs_scroll:
                 bar_h = max(1, round(list_h / num_rows * list_h))
                 bar_top = list_y + round(row_scroll / max_scroll * (list_h - bar_h))
                 for dy in range(bar_h):

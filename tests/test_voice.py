@@ -1,11 +1,6 @@
 """Tests for voice recognition logic and voice-related game behaviour."""
 
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock
-
-# Add project root to sys.path so the mentalmaths package is importable.
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mentalmaths.models import OpConfig
 import mentalmaths.voice as _voice_mod
@@ -481,6 +476,14 @@ class TestEmitText:
         assert listener.get_nowait() == ("clear", "")
         assert listener.get_nowait() is None
 
+    def test_double_no_fires_only_one_clear(self):
+        # "no no" (or any phrase with two "no" words) should produce exactly
+        # one clear event, not two.
+        listener = self._listener()
+        listener._emit_text("no no", final=True)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() is None
+
 
 # ===========================================================================
 # Game._process_voice_events
@@ -623,7 +626,7 @@ class TestGameVoiceEvents:
         listener = _mock_listener()
         listener.get_nowait.side_effect = [
             ("partial", "40"),  # "forty" heard during speech
-            ("final", "5"),     # vosk dropped "forty", only finalised "five"
+            ("final", "5"),  # vosk dropped "forty", only finalised "five"
             None,
         ]
         g.voice_listener = listener
@@ -640,7 +643,7 @@ class TestGameVoiceEvents:
         listener = _mock_listener()
         listener.get_nowait.side_effect = [
             ("partial", "45"),  # "forty five" heard during speech
-            ("final", "5"),     # vosk only finalised "five"
+            ("final", "5"),  # vosk only finalised "five"
             None,
         ]
         g.voice_listener = listener

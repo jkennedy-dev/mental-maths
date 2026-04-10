@@ -100,7 +100,7 @@ def _combine_spoken_nums(existing: str, incoming: str) -> str:
         a = int(existing)
         b = int(incoming)
     except ValueError:
-        return incoming  # decimal — treat as a fresh answer
+        return incoming  # non-integer (decimal, empty, etc.) — treat as a fresh answer
     if a < 0 or b < 0:
         return incoming  # negative — treat as a fresh answer
     if a > b > 0:
@@ -218,7 +218,8 @@ class VoiceListener:
     # This dramatically improves accuracy and speed compared to open vocabulary.
     # Derived from _WORD_TO_NUM so the two never drift out of sync.
     _VOCAB = json.dumps(
-        list(_WORD_TO_NUM) + ["point", "minus", "negative", "and", "enter", "no", "[unk]"]
+        list(_WORD_TO_NUM)
+        + ["point", "minus", "negative", "and", "enter", "no", "[unk]"]
     )
 
     def __init__(self, model_dir: Path = VOICE_MODEL_DIR):
@@ -229,8 +230,12 @@ class VoiceListener:
         self.error: Optional[str] = None
         self._enter_pending = False  # enter already queued — suppress re-fire
         self._clear_pending = False  # clear already queued — suppress re-fire
-        self._acted_on_partial = False  # combined partial acted on — suppress real final
-        self._last_combined_num: Optional[str] = None  # for combined-partial stability check
+        self._acted_on_partial = (
+            False  # combined partial acted on — suppress real final
+        )
+        self._last_combined_num: Optional[str] = (
+            None  # for combined-partial stability check
+        )
 
     def start(self) -> bool:
         """Start the background recognition thread.  Returns True on success."""
@@ -304,10 +309,10 @@ class VoiceListener:
                 self._last_combined_num = None
                 self._events.put(("clear", ""))
             if final:
-                self._clear_pending = False
-                remainder = words[no_idx + 1:]
+                remainder = words[no_idx + 1 :]
                 if remainder:
                     self._emit_text(" ".join(remainder), final=True)
+                self._clear_pending = False
             return
 
         if num_text:

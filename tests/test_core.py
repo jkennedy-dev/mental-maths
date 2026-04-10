@@ -1,14 +1,10 @@
 """Tests for mental-maths core logic (no curses required)."""
 
 import json
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
-# Add project root to sys.path so the mentalmaths package is importable.
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from mentalmaths.constants import TIME_OPTIONS
 from mentalmaths.models import OpConfig, Question
