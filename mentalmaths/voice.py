@@ -69,7 +69,7 @@ _SINGLE_DIGIT_WORDS: dict = {
     "nine": "9",
 }
 
-_SUBMIT_WORDS: frozenset = frozenset({"enter", "submit", "confirm", "done"})
+_SUBMIT_WORDS: frozenset = frozenset({"enter"})
 
 
 def _words_to_int(words: list) -> Optional[int]:
@@ -149,7 +149,7 @@ def _parse_spoken_number(text: str) -> Optional[str]:
         return None
 
     # Submit commands
-    if words[0] in ("enter", "submit", "confirm", "done"):
+    if words[0] == "enter":
         return "ENTER"
 
     # Vosk may transcribe digits directly (e.g. "42", "-5", "3.5")
@@ -270,9 +270,6 @@ class VoiceListener:
             "negative",
             "and",
             "enter",
-            "submit",
-            "confirm",
-            "done",
             "[unk]",
         ]
     )

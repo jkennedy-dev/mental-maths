@@ -166,9 +166,7 @@ class Game:
             _center(s, h // 2 + 3, fb, attr)
 
         if self.voice_listener:
-            help_text = (
-                "Speak or type answer   ENTER / say 'enter'   BACKSPACE   q to quit"
-            )
+            help_text = "Speak your answer and say 'enter'   BACKSPACE   q to quit"
         else:
             help_text = "Type answer and ENTER   BACKSPACE to correct   q to quit"
         _center(s, h - 2, help_text, curses.A_DIM)
@@ -233,7 +231,7 @@ class Game:
                 elif key in (curses.KEY_BACKSPACE, 127, 8):
                     self.voice_partial = ""
                     self.buf = self.buf[:-1]
-                elif key in (10, 13, curses.KEY_ENTER):
+                elif key in (10, 13, curses.KEY_ENTER) and not self.voice_listener:
                     self.voice_partial = ""
                     self._submit()
                 elif key in (27, ord("q"), ord("Q")):

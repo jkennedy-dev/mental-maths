@@ -706,14 +706,6 @@ class TestParseSpokenNumber:
     def test_enter_command(self):
         assert _parse_spoken_number("enter") == "ENTER"
 
-    def test_submit_command(self):
-        assert _parse_spoken_number("submit") == "ENTER"
-
-    def test_confirm_command(self):
-        assert _parse_spoken_number("confirm") == "ENTER"
-
-    def test_done_command(self):
-        assert _parse_spoken_number("done") == "ENTER"
 
     def test_numeric_string(self):
         assert _parse_spoken_number("42") == "42"
@@ -1067,11 +1059,10 @@ class TestEmitText:
         assert listener.get_nowait() == ("enter", "")
         assert listener.get_nowait() is None
 
-    def test_number_then_submit_combined(self):
+    def test_number_then_submit_not_recognised(self):
         listener = self._listener()
         listener._emit_text("eight submit", final=True)
-        assert listener.get_nowait() == ("final", "8")
-        assert listener.get_nowait() == ("enter", "")
+        assert listener.get_nowait() is None
 
     def test_partial_number_then_enter_no_submit(self):
         # Enter must NOT fire on a partial — only on finals — to prevent the
