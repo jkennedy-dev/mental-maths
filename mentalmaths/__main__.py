@@ -2,5 +2,10 @@ import curses
 
 from .app import main
 
-if __name__ == "__main__":
+
+def run() -> None:
     curses.wrapper(main)
+
+
+if __name__ == "__main__":
+    run()

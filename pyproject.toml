@@ -8,6 +8,9 @@ dependencies = [
     "vosk>=0.3.45",
 ]
 
+[project.scripts]
+mental-maths = "mentalmaths.__main__:run"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
@@ -15,3 +18,10 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.hatch.build.targets.wheel]
+packages = ["mentalmaths"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
