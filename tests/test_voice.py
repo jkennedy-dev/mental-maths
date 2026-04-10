@@ -549,6 +549,38 @@ class TestGameVoiceEvents:
         assert g.buf == "45"
         assert g.voice_partial == ""
 
+    def test_partial_preferred_when_full_phrase_partial_then_truncated_final(self):
+        """Remaining gap after the earlier partial-rescue fix: vosk correctly
+        builds partial 'forty five'=45, but its final drops 'forty' and
+        only returns 'five'=5.  _combine_spoken_nums('45','5') replaces rather
+        than adds, so we must fall back to the partial instead."""
+        g = _make_game()
+        listener = _mock_listener()
+        listener.get_nowait.side_effect = [
+            ("partial", "45"),  # "forty five" heard during speech
+            ("final", "5"),     # vosk only finalised "five"
+            None,
+        ]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == "45"
+        assert g.voice_partial == ""
+
+    def test_larger_final_beats_partial(self):
+        """A final that is numerically larger than the partial is a legitimate
+        refinement (more words recognised), not a truncation — use the final."""
+        g = _make_game()
+        listener = _mock_listener()
+        listener.get_nowait.side_effect = [
+            ("partial", "40"),
+            ("final", "42"),  # vosk correctly identified "forty two"
+            None,
+        ]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == "42"
+        assert g.voice_partial == ""
+
     def test_spurious_partial_not_committed_on_enter(self):
         """Bug: after a correct final ('45'), trailing audio from the last
         word leaks into the next recognition window as a partial ('5').

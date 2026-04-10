@@ -114,11 +114,10 @@ def _combine_spoken_nums(existing: str, incoming: str) -> str:
 
 def _amplify_audio(data: bytes, gain: int) -> bytes:
     """Scale 16-bit little-endian PCM samples by gain, clamping to ±32767."""
-    buf = array.array("h", data)
-    for i in range(len(buf)):
-        v = buf[i] * gain
-        buf[i] = 32767 if v > 32767 else (-32768 if v < -32768 else v)
-    return buf.tobytes()
+    samples = array.array("h", data)
+    return array.array(
+        "h", (max(-32768, min(32767, s * gain)) for s in samples)
+    ).tobytes()
 
 
 def _parse_spoken_number(text: str) -> Optional[str]:
@@ -211,52 +210,14 @@ class VoiceListener:
     """
 
     SAMPLE_RATE = 16000
-    CHUNK_SIZE = 800  # 50 ms per processing cycle
+    CHUNK_SIZE = 400  # 25 ms per processing cycle
     INPUT_GAIN = 4  # amplify PCM before recognition (helps with distance)
 
     # Restrict recognition to only the words the number parser uses.
     # This dramatically improves accuracy and speed compared to open vocabulary.
+    # Derived from _WORD_TO_NUM so the two never drift out of sync.
     _VOCAB = json.dumps(
-        [
-            "zero",
-            "oh",
-            "nought",
-            "one",
-            "two",
-            "three",
-            "four",
-            "five",
-            "six",
-            "seven",
-            "eight",
-            "nine",
-            "ten",
-            "eleven",
-            "twelve",
-            "thirteen",
-            "fourteen",
-            "fifteen",
-            "sixteen",
-            "seventeen",
-            "eighteen",
-            "nineteen",
-            "twenty",
-            "thirty",
-            "forty",
-            "fifty",
-            "sixty",
-            "seventy",
-            "eighty",
-            "ninety",
-            "hundred",
-            "thousand",
-            "point",
-            "minus",
-            "negative",
-            "and",
-            "enter",
-            "[unk]",
-        ]
+        list(_WORD_TO_NUM) + ["point", "minus", "negative", "and", "enter", "[unk]"]
     )
 
     def __init__(self, model_dir: Path = VOICE_MODEL_DIR):
@@ -372,21 +333,23 @@ class VoiceListener:
 
     def _loop(self) -> None:
         try:
-            # Suppress C-library noise (ALSA/JACK errors, vosk LOG lines) so
-            # they don't bleed into the curses display.
+            # Suppress C-library noise (ALSA/JACK errors, vosk LOG lines, and
+            # audio-device probing chatter) so they don't bleed into the curses
+            # display.  pa.open() is included because device selection can also
+            # produce ALSA stderr output.
             with _silence_stderr():
                 _vosk.SetLogLevel(-1)
                 model = _vosk.Model(str(self._model_dir))
                 # Restricted vocab + no word-level timing = faster inference.
                 rec = _vosk.KaldiRecognizer(model, self.SAMPLE_RATE, self._VOCAB)
                 pa = _pyaudio.PyAudio()
-            stream = pa.open(
-                format=_pyaudio.paInt16,
-                channels=1,
-                rate=self.SAMPLE_RATE,
-                input=True,
-                frames_per_buffer=self.CHUNK_SIZE,
-            )
+                stream = pa.open(
+                    format=_pyaudio.paInt16,
+                    channels=1,
+                    rate=self.SAMPLE_RATE,
+                    input=True,
+                    frames_per_buffer=self.CHUNK_SIZE,
+                )
             try:
                 while not self._stop.is_set():
                     raw = stream.read(self.CHUNK_SIZE, exception_on_overflow=False)

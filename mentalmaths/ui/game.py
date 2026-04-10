@@ -230,12 +230,26 @@ class Game:
                 # accumulates correctly rather than overwriting.
                 # If buf is empty but voice_partial has a value, vosk may have
                 # dropped the first word of a phrase from its final result (e.g.
-                # partial "forty", final "five" instead of "forty five").  Use
-                # the partial as the base so the full phrase can be recovered.
+                # partial "forty five"=45, final "five"=5).  Use the partial as
+                # the base so the full phrase can be recovered.
                 if self.buf:
                     self.buf = _combine_spoken_nums(self.buf, value)
                 elif self.voice_partial:
-                    self.buf = _combine_spoken_nums(self.voice_partial, value)
+                    combined = _combine_spoken_nums(self.voice_partial, value)
+                    if combined == value:
+                        # Combine replaced (did not add to) the partial.  If the
+                        # final is numerically smaller than the partial the final
+                        # is almost certainly a truncation — prefer the partial.
+                        try:
+                            self.buf = (
+                                self.voice_partial
+                                if int(value) < int(self.voice_partial)
+                                else value
+                            )
+                        except ValueError:
+                            self.buf = value  # decimal/negative — trust the final
+                    else:
+                        self.buf = combined
                 else:
                     self.buf = value
                 self.voice_partial = ""
