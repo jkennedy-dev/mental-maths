@@ -1064,13 +1064,66 @@ class TestEmitText:
         listener._emit_text("eight submit", final=True)
         assert listener.get_nowait() is None
 
-    def test_partial_number_then_enter_no_submit(self):
-        # Enter must NOT fire on a partial — only on finals — to prevent the
-        # same utterance queuing multiple enter events as vosk refines it.
+    def test_combined_partial_fires_after_stable(self):
+        # First combined partial just shows the number as a partial.
+        # Only the second consecutive partial with the same number fires.
         listener = self._listener()
         listener._emit_text("forty enter", final=False)
         assert listener.get_nowait() == ("partial", "40")
-        assert listener.get_nowait() is None  # no enter from partial
+        assert listener.get_nowait() is None
+        listener._emit_text("forty enter", final=False)
+        assert listener.get_nowait() == ("final", "40")
+        assert listener.get_nowait() == ("enter", "")
+        assert listener.get_nowait() is None
+
+    def test_combined_partial_refines_before_firing(self):
+        # If vosk refines "forty enter" → "forty two enter", the first value
+        # ("forty") is discarded and only the stable "forty two" fires.
+        listener = self._listener()
+        listener._emit_text("forty enter", final=False)
+        assert listener.get_nowait() == ("partial", "40")
+        listener._emit_text("forty two enter", final=False)
+        assert listener.get_nowait() == ("partial", "42")  # changed — reset stability
+        listener._emit_text("forty two enter", final=False)
+        assert listener.get_nowait() == ("final", "42")    # stable now
+        assert listener.get_nowait() == ("enter", "")
+        assert listener.get_nowait() is None
+
+    def test_combined_partial_suppresses_real_final(self):
+        # The real vosk final for an already-acted-on combined partial is dropped.
+        listener = self._listener()
+        listener._emit_text("forty two enter", final=False)  # first — not yet stable
+        listener.get_nowait()  # ('partial', '42')
+        listener._emit_text("forty two enter", final=False)  # second — stable, fires
+        listener.get_nowait()  # ('final', '42')
+        listener.get_nowait()  # ('enter', '')
+        listener._emit_text("forty two enter", final=True)   # real final — suppressed
+        assert listener.get_nowait() is None
+
+    def test_standalone_enter_fires_on_partial(self):
+        # Standalone "enter" (no preceding number) fires immediately on a partial
+        # result, bypassing the VAD silence wait for lower latency.
+        listener = self._listener()
+        listener._emit_text("enter", final=False)
+        assert listener.get_nowait() == ("enter", "")
+
+    def test_standalone_enter_not_duplicated_by_final(self):
+        # Once enter fires from a partial, the subsequent final must be suppressed.
+        listener = self._listener()
+        listener._emit_text("enter", final=False)
+        assert listener.get_nowait() == ("enter", "")
+        listener._emit_text("enter", final=True)
+        assert listener.get_nowait() is None
+
+    def test_new_number_resets_enter_dedup(self):
+        # After a number event, enter should fire again (dedup flag reset).
+        listener = self._listener()
+        listener._emit_text("enter", final=False)
+        listener.get_nowait()  # consume the enter
+        listener._emit_text("forty two", final=True)
+        listener.get_nowait()  # consume the number
+        listener._emit_text("enter", final=False)
+        assert listener.get_nowait() == ("enter", "")
 
     def test_unrecognised_text_emits_nothing(self):
         listener = self._listener()
@@ -1090,7 +1143,8 @@ class TestEmitText:
         assert listener.get_nowait() is None  # no spurious number event
 
     def test_enter_at_start_partial_no_submit(self):
-        # Partial results must never emit enter.
+        # "enter five" partial — enter at start treated as ENTER-only path,
+        # which requires final=True, so nothing is emitted here.
         listener = self._listener()
         listener._emit_text("enter five", final=False)
         assert listener.get_nowait() is None

@@ -280,6 +280,9 @@ class VoiceListener:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.error: Optional[str] = None
+        self._enter_pending = False    # enter already queued — suppress re-fire
+        self._acted_on_partial = False  # combined partial acted on — suppress real final
+        self._last_combined_num: Optional[str] = None  # previous combined-partial number, for stability check
 
     def start(self) -> bool:
         """Start the background recognition thread.  Returns True on success."""
@@ -314,33 +317,68 @@ class VoiceListener:
     def _emit_text(self, text: str, final: bool) -> None:
         """Parse a vosk transcript and place the appropriate events on the queue.
 
-        Handles combined utterances such as "forty two enter" by stripping a
-        trailing submit word and emitting both a number event and an enter event.
-        This lets the player say the number and "enter" in one breath without
-        the second word being lost.
+        All enter events fire as early as possible — on the first partial that
+        contains "enter" — rather than waiting for vosk to finalise the utterance
+        (which requires a VAD silence timeout of ~300–500 ms).
+
+        Two dedup flags prevent double-firing:
+        - _enter_pending: enter already queued; ignore further enter signals until
+          a new number resets it.
+        - _acted_on_partial: a combined partial (number + enter) was already acted
+          on; suppress the real final that vosk will emit for the same utterance.
         """
         words = text.split()
         has_sub = bool(words) and words[-1] in _SUBMIT_WORDS
         num_words = words[:-1] if has_sub else words
         num_text = " ".join(num_words)
 
+        # Suppress all further events for this utterance once we acted on the
+        # combined partial.  Vosk can re-emit the same partial multiple times as
+        # it refines its hypothesis; without this, each re-emission would reset
+        # _enter_pending and fire another enter event.
+        if self._acted_on_partial:
+            if final:
+                self._acted_on_partial = False
+                self._last_combined_num = None
+            return
+
         if num_text:
             val = _parse_spoken_number(num_text)
             if val == "ENTER":
-                # A submit word appeared somewhere other than the end
-                # (e.g. vosk returned "enter forty") — treat as enter only,
-                # and only on a final result to avoid duplicates.
-                if final:
+                # "enter" at start of utterance (e.g. vosk returned "enter forty")
+                # — treat as enter only, final only to avoid duplicates.
+                if final and not self._enter_pending:
+                    self._enter_pending = True
                     self._events.put(("enter", ""))
+                self._last_combined_num = None
                 return
             if val is not None:
-                kind = "final" if final else "partial"
-                self._events.put((kind, val))
+                self._enter_pending = False
+                if has_sub and not final:
+                    # Combined partial: require the same number value in two
+                    # consecutive partials before committing.  This prevents
+                    # acting on an intermediate partial (e.g. "forty enter")
+                    # before vosk settles on the correct "forty two enter".
+                    if val != self._last_combined_num:
+                        self._last_combined_num = val
+                        self._events.put(("partial", val))
+                        return  # not yet stable — don't fire enter
+                    # Stable — commit as final, then fall through to fire enter.
+                    self._last_combined_num = None
+                    self._events.put(("final", val))
+                else:
+                    self._last_combined_num = None
+                    kind = "final" if final else "partial"
+                    self._events.put((kind, val))
 
-        # Only emit enter on a final result.  Partials are unstable mid-stream
-        # guesses; acting on them causes the same utterance to fire multiple
-        # enter events as vosk refines its hypothesis.
-        if has_sub and final:
+        if final:
+            self._last_combined_num = None
+
+        if has_sub and not self._enter_pending:
+            self._enter_pending = True
+            # Remember we acted on a partial so the real final is suppressed.
+            if not final and num_text:
+                self._acted_on_partial = True
             self._events.put(("enter", ""))
 
     def _loop(self) -> None:
