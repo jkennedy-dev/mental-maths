@@ -935,6 +935,43 @@ class TestGameVoiceEvents:
         assert g.buf == "42"
         assert g.voice_partial == ""
 
+    def test_partial_rescued_when_vosk_drops_word_from_final(self):
+        """Bug: vosk drops the first word of a phrase from the final result.
+        e.g. user says 'forty five'; partial shows '40' but vosk finalises
+        as just 'five'.  The partial should be used to reconstruct '45'."""
+        from unittest.mock import MagicMock
+
+        g = self._make_game()
+        listener = MagicMock()
+        listener.error = None
+        listener.get_nowait.side_effect = [
+            ("partial", "40"),  # "forty" heard during speech
+            ("final", "5"),     # vosk dropped "forty", only finalised "five"
+            None,
+        ]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == "45"
+        assert g.voice_partial == ""
+
+    def test_spurious_partial_not_committed_on_enter(self):
+        """Bug: after a correct final ('45'), trailing audio from the last
+        word leaks into the next recognition window as a partial ('5').
+        On enter the combine would replace '45' with '5'.  The partial must
+        be discarded instead."""
+        from unittest.mock import MagicMock
+
+        g = self._make_game()
+        g.buf = "45"
+        g.voice_partial = "5"
+        listener = MagicMock()
+        listener.error = None
+        listener.get_nowait.side_effect = [("enter", ""), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert len(g.questions) == 1
+        assert g.questions[0].user_answer == "45"
+
     def test_thread_error_clears_listener_and_stores_message(self):
         """If the voice thread crashes, _process_voice_events detects it and
         moves the error message into _voice_error so the UI can display it."""

@@ -213,18 +213,31 @@ class Game:
             if kind == "enter":
                 # Commit any still-pending partial before submitting so that
                 # "forty [pause] two [pause] enter" works correctly.
+                # Guard: only merge if the combine *extends* the buffer.  If it
+                # would replace (combine returns the partial itself), the partial
+                # is a spurious echo of trailing audio — keep the confirmed buf.
                 if self.voice_partial:
-                    self.buf = (
-                        _combine_spoken_nums(self.buf, self.voice_partial)
-                        if self.buf
-                        else self.voice_partial
-                    )
+                    if self.buf:
+                        combined = _combine_spoken_nums(self.buf, self.voice_partial)
+                        if combined != self.voice_partial:
+                            self.buf = combined
+                    else:
+                        self.buf = self.voice_partial
                     self.voice_partial = ""
                 self._submit()
             elif kind == "final":
                 # Combine with existing buffer so slow speech ("forty" … "two")
                 # accumulates correctly rather than overwriting.
-                self.buf = _combine_spoken_nums(self.buf, value) if self.buf else value
+                # If buf is empty but voice_partial has a value, vosk may have
+                # dropped the first word of a phrase from its final result (e.g.
+                # partial "forty", final "five" instead of "forty five").  Use
+                # the partial as the base so the full phrase can be recovered.
+                if self.buf:
+                    self.buf = _combine_spoken_nums(self.buf, value)
+                elif self.voice_partial:
+                    self.buf = _combine_spoken_nums(self.voice_partial, value)
+                else:
+                    self.buf = value
                 self.voice_partial = ""
             elif kind == "partial":
                 self.voice_partial = value
