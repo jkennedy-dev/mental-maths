@@ -315,8 +315,8 @@ class TestEmitText:
         assert listener.get_nowait() is None
 
     def test_combined_partial_fires_after_stable(self):
-        # First combined partial just shows the number as a partial.
-        # Only the second consecutive partial with the same number fires.
+        # First combined partial shows the number as a partial only.
+        # Only the second consecutive partial with the same number commits.
         listener = self._listener()
         listener._emit_text("forty enter", final=False)
         assert listener.get_nowait() == ("partial", "40")
@@ -327,8 +327,8 @@ class TestEmitText:
         assert listener.get_nowait() is None
 
     def test_combined_partial_refines_before_firing(self):
-        # If vosk refines "forty enter" → "forty two enter", the first value
-        # ("forty") is discarded and only the stable "forty two" fires.
+        # If vosk refines "forty enter" → "forty two enter", stability resets
+        # so only the settled value fires.
         listener = self._listener()
         listener._emit_text("forty enter", final=False)
         assert listener.get_nowait() == ("partial", "40")
@@ -397,6 +397,88 @@ class TestEmitText:
         # which requires final=True, so nothing is emitted here.
         listener = self._listener()
         listener._emit_text("enter five", final=False)
+        assert listener.get_nowait() is None
+
+    def test_no_emits_clear_on_partial(self):
+        # "no" fires immediately without waiting for the VAD silence final.
+        listener = self._listener()
+        listener._emit_text("no", final=False)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() is None
+
+    def test_no_emits_clear_on_final(self):
+        listener = self._listener()
+        listener._emit_text("no", final=True)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() is None
+
+    def test_no_not_duplicated_by_final(self):
+        # Partial fires the clear; the subsequent vosk final must be suppressed.
+        listener = self._listener()
+        listener._emit_text("no", final=False)
+        assert listener.get_nowait() == ("clear", "")
+        listener._emit_text("no", final=True)
+        assert listener.get_nowait() is None
+
+    def test_no_resets_after_new_number(self):
+        # After a clear, saying a new number re-arms 'no' for future use.
+        listener = self._listener()
+        listener._emit_text("no", final=False)
+        listener.get_nowait()  # consume the clear
+        listener._emit_text("forty two", final=True)
+        listener.get_nowait()  # consume the number
+        listener._emit_text("no", final=False)
+        assert listener.get_nowait() == ("clear", "")
+
+    def test_no_followed_by_number_clears_then_enters_number(self):
+        # "no forty" said quickly as one breath: clear fires AND the number
+        # is processed so the player does not need a second utterance.
+        listener = self._listener()
+        listener._emit_text("no forty", final=True)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() == ("final", "40")
+        assert listener.get_nowait() is None
+
+    def test_no_followed_by_number_and_enter(self):
+        # "no forty two enter" in one breath: clear + final 42 + enter.
+        listener = self._listener()
+        listener._emit_text("no forty two enter", final=True)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() == ("final", "42")
+        assert listener.get_nowait() == ("enter", "")
+        assert listener.get_nowait() is None
+
+    def test_trailing_no_clears(self):
+        # "forty no" — "no" anywhere in the phrase acts as clear; the number
+        # before it is discarded (the player is cancelling it).
+        listener = self._listener()
+        listener._emit_text("forty no", final=True)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() is None
+
+    def test_no_mid_utterance_clears_then_enters_number(self):
+        # "forty no fifty nine" — clear fires and the new number is processed.
+        listener = self._listener()
+        listener._emit_text("forty no fifty nine", final=True)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() == ("final", "59")
+        assert listener.get_nowait() is None
+
+    def test_no_mid_utterance_with_enter(self):
+        # "forty no fifty nine enter" — clear + final 59 + enter, all in one breath.
+        listener = self._listener()
+        listener._emit_text("forty no fifty nine enter", final=True)
+        assert listener.get_nowait() == ("clear", "")
+        assert listener.get_nowait() == ("final", "59")
+        assert listener.get_nowait() == ("enter", "")
+        assert listener.get_nowait() is None
+
+    def test_no_mid_utterance_partial_only_clears(self):
+        # On a partial, only the clear fires — the number after "no" waits for
+        # the final to avoid acting on a still-refining hypothesis.
+        listener = self._listener()
+        listener._emit_text("forty no fifty nine", final=False)
+        assert listener.get_nowait() == ("clear", "")
         assert listener.get_nowait() is None
 
 
@@ -616,6 +698,33 @@ class TestGameVoiceEvents:
         g.voice_listener = listener
         g._process_voice_events()
         assert g.voice_listener is listener
+
+    def test_clear_event_resets_buf_and_partial(self):
+        """A 'clear' event wipes buf and voice_partial so the player starts over."""
+        g = _make_game()
+        g.buf = "42"
+        g.voice_partial = "5"
+        listener = _mock_listener()
+        listener.get_nowait.side_effect = [("clear", ""), None]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == ""
+        assert g.voice_partial == ""
+        assert len(g.questions) == 0  # nothing submitted
+
+    def test_clear_then_new_answer_works(self):
+        """After a clear the player can say a fresh number normally."""
+        g = _make_game()
+        g.buf = "99"
+        listener = _mock_listener()
+        listener.get_nowait.side_effect = [
+            ("clear", ""),
+            ("final", "42"),
+            None,
+        ]
+        g.voice_listener = listener
+        g._process_voice_events()
+        assert g.buf == "42"
 
 
 # ===========================================================================

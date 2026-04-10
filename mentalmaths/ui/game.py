@@ -166,7 +166,7 @@ class Game:
             _center(s, h // 2 + 3, fb, attr)
 
         if self.voice_listener:
-            help_text = "Speak your answer and say 'enter'   BACKSPACE   q to quit"
+            help_text = "Speak answer + 'enter' to submit   'no' to clear   q to quit"
         else:
             help_text = "Type answer and ENTER   BACKSPACE to correct   q to quit"
         _center(s, h - 2, help_text, curses.A_DIM)
@@ -210,7 +210,10 @@ class Game:
                 break
             had_events = True
             kind, value = event
-            if kind == "enter":
+            if kind == "clear":
+                self.buf = ""
+                self.voice_partial = ""
+            elif kind == "enter":
                 # Commit any still-pending partial before submitting so that
                 # "forty [pause] two [pause] enter" works correctly.
                 # Guard: only merge if the combine *extends* the buffer.  If it

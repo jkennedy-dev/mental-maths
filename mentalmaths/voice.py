@@ -206,18 +206,19 @@ class VoiceListener:
     Events placed on the queue are 2-tuples:
         ('partial', '<digits>')  — in-progress recognition, may change
         ('final',   '<digits>')  — committed recognition result
-        ('enter',   '')          — user said a submit command
+        ('enter',   '')          — user said a submit command ('enter')
+        ('clear',   '')          — user said a clear command ('no')
     """
 
     SAMPLE_RATE = 16000
-    CHUNK_SIZE = 400  # 25 ms per processing cycle
+    CHUNK_SIZE = 200  # 12.5 ms per processing cycle
     INPUT_GAIN = 4  # amplify PCM before recognition (helps with distance)
 
     # Restrict recognition to only the words the number parser uses.
     # This dramatically improves accuracy and speed compared to open vocabulary.
     # Derived from _WORD_TO_NUM so the two never drift out of sync.
     _VOCAB = json.dumps(
-        list(_WORD_TO_NUM) + ["point", "minus", "negative", "and", "enter", "[unk]"]
+        list(_WORD_TO_NUM) + ["point", "minus", "negative", "and", "enter", "no", "[unk]"]
     )
 
     def __init__(self, model_dir: Path = VOICE_MODEL_DIR):
@@ -227,12 +228,9 @@ class VoiceListener:
         self._thread: Optional[threading.Thread] = None
         self.error: Optional[str] = None
         self._enter_pending = False  # enter already queued — suppress re-fire
-        self._acted_on_partial = (
-            False  # combined partial acted on — suppress real final
-        )
-        self._last_combined_num: Optional[str] = (
-            None  # previous combined-partial number, for stability check
-        )
+        self._clear_pending = False  # clear already queued — suppress re-fire
+        self._acted_on_partial = False  # combined partial acted on — suppress real final
+        self._last_combined_num: Optional[str] = None  # for combined-partial stability check
 
     def start(self) -> bool:
         """Start the background recognition thread.  Returns True on success."""
@@ -292,6 +290,26 @@ class VoiceListener:
                 self._last_combined_num = None
             return
 
+        # "no" is a clear command — wipe the current entry.  It may appear
+        # anywhere in the phrase ("forty no fifty nine") so search for the first
+        # occurrence.  Everything before "no" is discarded; everything after is
+        # the new intended input and is processed recursively on the final.
+        # On a partial, only the clear fires — the remainder waits for the final
+        # to avoid acting on a still-refining hypothesis.
+        no_idx = next((i for i, w in enumerate(words) if w == "no"), -1)
+        if no_idx >= 0:
+            if not self._clear_pending:
+                self._clear_pending = True
+                self._enter_pending = False
+                self._last_combined_num = None
+                self._events.put(("clear", ""))
+            if final:
+                self._clear_pending = False
+                remainder = words[no_idx + 1:]
+                if remainder:
+                    self._emit_text(" ".join(remainder), final=True)
+            return
+
         if num_text:
             val = _parse_spoken_number(num_text)
             if val == "ENTER":
@@ -304,6 +322,7 @@ class VoiceListener:
                 return
             if val is not None:
                 self._enter_pending = False
+                self._clear_pending = False
                 if has_sub and not final:
                     # Combined partial: require the same number value in two
                     # consecutive partials before committing.  This prevents
