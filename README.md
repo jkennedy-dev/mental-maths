@@ -8,17 +8,17 @@ A terminal arithmetic trainer with a countdown timer. Practice addition, subtrac
 
 ## Installation
 
-Install system and python dependencies:
+Install the system dependency for audio support, then install the package:
 
 ```
 sudo apt install portaudio19-dev
-uv sync
+pip install mental-maths
 ```
 
 ## Usage
 
 ```
-uv run python -m mentalmaths
+mental-maths
 ```
 
 ## Voice mode
