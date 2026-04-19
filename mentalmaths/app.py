@@ -1,7 +1,8 @@
 """Mental Maths Trainer — terminal arithmetic practice with countdown timer."""
 
 import curses
-from typing import List
+from dataclasses import dataclass
+from typing import List, Optional
 
 from .constants import QuitGame, OPERATIONS, TIME_OPTIONS
 from .models import OpConfig
@@ -17,6 +18,17 @@ from .ui.results import show_results
 from .ui.viz import show_viz
 
 
+@dataclass
+class _SessionState:
+    """Carries the configuration chosen in the most recent menu pass."""
+
+    indices: Optional[List[int]] = None
+    configs: Optional[List[OpConfig]] = None
+    t_idx: int = 0
+    guest_mode: bool = False
+    voice_mode: bool = False
+
+
 def main(stdscr) -> None:
     curses.start_color()
     curses.use_default_colors()
@@ -28,11 +40,7 @@ def main(stdscr) -> None:
     stdscr.keypad(True)
 
     data = _load_data()
-    last_indices = None
-    last_configs = None
-    last_t_idx = 0
-    last_guest_mode = False
-    last_voice_mode = False
+    state = _SessionState()
     skip_menu = False
     first_run = True  # show quick-start once on startup
 
@@ -54,9 +62,10 @@ def main(stdscr) -> None:
                                 data.get("sessions", []),
                             )
                             if choice == "quick":
-                                last_configs = saved_configs
-                                last_t_idx = saved_t_idx
-                                last_guest_mode = False
+                                state.configs = saved_configs
+                                state.t_idx = saved_t_idx
+                                state.guest_mode = lc.get("guest_mode", False)
+                                state.voice_mode = lc.get("voice_mode", False)
                                 skip_menu = True
                                 continue
                         except Exception:
@@ -67,16 +76,16 @@ def main(stdscr) -> None:
                     stdscr,
                     "MENTAL MATHS TRAINER — Select Operations",
                     OPERATIONS,
-                    preselected=last_indices,
-                    guest=last_guest_mode,
-                    voice=last_voice_mode,
+                    preselected=state.indices,
+                    guest=state.guest_mode,
+                    voice=state.voice_mode,
                 )
                 if result is None:  # v pressed
                     show_viz(stdscr, data.get("sessions", []))
                     continue
                 indices, guest_mode, voice_mode = result
 
-                prev = {c.operation: c for c in (last_configs or [])}
+                prev = {c.operation: c for c in (state.configs or [])}
                 configs: List[OpConfig] = []
                 cancelled = False
                 for idx in indices:
@@ -94,41 +103,51 @@ def main(stdscr) -> None:
                     stdscr,
                     "Select Time Limit",
                     [label for label, _ in TIME_OPTIONS] + ["Back"],
-                    initial=last_t_idx,
+                    initial=state.t_idx,
                 )
                 if t_idx < 0 or t_idx == len(TIME_OPTIONS):
                     continue
 
-                last_indices = indices
-                last_configs = configs
-                last_t_idx = t_idx
-                last_guest_mode = guest_mode
-                last_voice_mode = voice_mode
+                state.indices = indices
+                state.configs = configs
+                state.t_idx = t_idx
+                state.guest_mode = guest_mode
+                state.voice_mode = voice_mode
 
             # Play
             questions = Game(
                 stdscr,
-                last_configs,
-                TIME_OPTIONS[last_t_idx][1],
-                voice_mode=last_voice_mode,
-                guest_mode=last_guest_mode,
+                state.configs,
+                TIME_OPTIONS[state.t_idx][1],
+                voice_mode=state.voice_mode,
+                guest_mode=state.guest_mode,
             ).run()
 
             # Persist (skipped in guest mode)
-            if not last_guest_mode:
+            save_error = False
+            if not state.guest_mode:
                 session = _make_session(
-                    questions, last_configs, TIME_OPTIONS[last_t_idx][1]
+                    questions, state.configs, TIME_OPTIONS[state.t_idx][1]
                 )
                 if session:
                     data.setdefault("sessions", []).append(session)
                     data["last_config"] = {
-                        "t_idx": last_t_idx,
-                        "configs": [_cfg_to_dict(c) for c in last_configs],
+                        "t_idx": state.t_idx,
+                        "configs": [_cfg_to_dict(c) for c in state.configs],
+                        "guest_mode": state.guest_mode,
+                        "voice_mode": state.voice_mode,
                     }
-                    _save_data(data)
+                    try:
+                        _save_data(data)
+                    except OSError:
+                        save_error = True
 
             result = show_results(
-                stdscr, questions, data.get("sessions", []), guest_mode=last_guest_mode
+                stdscr,
+                questions,
+                data.get("sessions", []),
+                guest_mode=state.guest_mode,
+                save_error=save_error,
             )
             if result == "quit":
                 break

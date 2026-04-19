@@ -175,6 +175,18 @@ class TestCombineSpokenNums:
     def test_decimal_incoming_restarts(self):
         assert _combine_spoken_nums("40", "2.5") == "2.5"
 
+    # ---- zero continuation --------------------------------------------------
+    def test_round_plus_zero(self):
+        # "one hundred" followed by "zero" should combine to "100", not "0"
+        assert _combine_spoken_nums("100", "0") == "100"
+
+    def test_ten_plus_zero(self):
+        assert _combine_spoken_nums("10", "0") == "10"
+
+    def test_non_round_plus_zero_replaces(self):
+        # 5 % 10 != 0, so "zero" replaces
+        assert _combine_spoken_nums("5", "0") == "0"
+
     # ---- empty existing -----------------------------------------------------
     def test_empty_existing_returns_incoming(self):
         # Not called with empty existing in practice, but defensive check.

@@ -12,6 +12,9 @@ from .helpers import _center, _box, _confirm_quit
 
 
 class Game:
+    _WARN_SECS = 30
+    _CRITICAL_SECS = 10
+
     def __init__(
         self,
         stdscr,
@@ -72,9 +75,9 @@ class Game:
 
         timer_attr = (
             curses.color_pair(3)
-            if remaining <= 10
+            if remaining <= self._CRITICAL_SECS
             else curses.color_pair(4)
-            if remaining <= 30
+            if remaining <= self._WARN_SECS
             else curses.color_pair(1)
         ) | curses.A_BOLD
         mic_str = " [MIC] " if self.voice_listener else ""
@@ -96,9 +99,9 @@ class Game:
         filled = round(remaining / self.time_limit * bar_w) if self.time_limit else 0
         bar_attr = (
             curses.color_pair(3)
-            if remaining <= 10
+            if remaining <= self._CRITICAL_SECS
             else curses.color_pair(4)
-            if remaining <= 30
+            if remaining <= self._WARN_SECS
             else curses.color_pair(1)
         )
         try:

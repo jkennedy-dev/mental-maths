@@ -36,10 +36,7 @@ def _load_data() -> dict:
 
 
 def _save_data(data: dict) -> None:
-    try:
-        DATA_FILE.write_text(json.dumps(data, indent=2))
-    except OSError:
-        pass
+    DATA_FILE.write_text(json.dumps(data, indent=2))
 
 
 def _make_session(questions: list, configs: list, time_limit: int) -> Optional[dict]:

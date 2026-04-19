@@ -413,11 +413,12 @@ class TestDataPersistence:
         _save_data(data)
         assert _load_data() == data
 
-    def test_save_silently_ignores_os_error(self, tmp_path, monkeypatch):
+    def test_save_raises_on_os_error(self, tmp_path, monkeypatch):
         f = tmp_path / "data.json"
         monkeypatch.setattr(_storage_mod, "DATA_FILE", f)
         with patch.object(Path, "write_text", side_effect=OSError("no disk")):
-            _save_data({"x": 1})  # must not raise
+            with pytest.raises(OSError, match="no disk"):
+                _save_data({"x": 1})
 
     def test_load_full_structure(self, tmp_path, monkeypatch):
         f = tmp_path / "data.json"

@@ -15,7 +15,11 @@ def _q_line(q: Question) -> str:
 
 
 def show_results(
-    stdscr, questions: List[Question], sessions: list, guest_mode: bool = False
+    stdscr,
+    questions: List[Question],
+    sessions: list,
+    guest_mode: bool = False,
+    save_error: bool = False,
 ) -> str:
     """Returns 'again', 'menu', or 'quit'."""
     curses.curs_set(0)
@@ -34,6 +38,8 @@ def show_results(
         _center(stdscr, 3, f"{correct} / {total} correct  ({pct:.0f}%)", curses.A_BOLD)
         if guest_mode:
             _center(stdscr, 4, "(guest mode — results not saved)", curses.color_pair(4))
+        elif save_error:
+            _center(stdscr, 4, "(warning: session could not be saved)", curses.color_pair(3))
 
         list_y = 5
         list_h = h - 8

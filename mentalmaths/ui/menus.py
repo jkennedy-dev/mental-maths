@@ -1,5 +1,5 @@
 import curses
-from typing import List, Optional, Tuple
+from typing import List, NamedTuple, Optional, Tuple
 
 from ..constants import QuitGame, TIME_OPTIONS
 from ..models import OpConfig
@@ -123,7 +123,12 @@ def run_multiselect(
 
 # ─── Menu: per-operation config ────────────────────────────────────────────────
 
-Row = Tuple[str, int, int, int, str]
+class Row(NamedTuple):
+    label: str
+    value: int
+    min_val: int
+    max_val: int
+    key: str
 
 
 def _build_rows(
@@ -131,24 +136,24 @@ def _build_rows(
 ) -> List[Row]:
     rows: List[Row] = []
     if op in ("Addition", "Subtraction"):
-        rows.append(("Integer digits", digits, 1, 4, "digits"))
+        rows.append(Row("Integer digits", digits, 1, 4, "digits"))
     if op == "Multiplication":
         rows += [
-            ("Multiplier min", op2_lo, 1, op2_hi, "op2_lo"),
-            ("Multiplier max", op2_hi, op2_lo, 99, "op2_hi"),
+            Row("Multiplier min", op2_lo, 1, op2_hi, "op2_lo"),
+            Row("Multiplier max", op2_hi, op2_lo, 99, "op2_hi"),
         ]
     elif op == "Division":
         rows += [
-            ("Divisor min", op2_lo, 2, op2_hi, "op2_lo"),
-            ("Divisor max", op2_hi, op2_lo, 99, "op2_hi"),
+            Row("Divisor min", op2_lo, 2, op2_hi, "op2_lo"),
+            Row("Divisor max", op2_hi, op2_lo, 99, "op2_hi"),
         ]
-    rows.append(("Decimal places", decimals, 0, 3, "decimals"))
+    rows.append(Row("Decimal places", decimals, 0, 3, "decimals"))
     if op == "Subtraction":
-        rows.append(("Allow negatives", allow_neg, 0, 1, "allow_neg"))
+        rows.append(Row("Allow negatives", allow_neg, 0, 1, "allow_neg"))
     return rows
 
 
-def run_op_config(stdscr, cfg) -> Optional[object]:
+def run_op_config(stdscr, cfg: OpConfig) -> Optional[OpConfig]:
     """Returns configured OpConfig, None on ESC. Raises QuitGame on q."""
     op, digits, decimals, op2_lo, op2_hi, allow_neg = (
         cfg.operation,
@@ -195,13 +200,13 @@ def run_op_config(stdscr, cfg) -> Optional[object]:
             field_idx = (field_idx + 1) % n
         elif key in (curses.KEY_LEFT, ord("h"), curses.KEY_RIGHT, ord("l")):
             delta = -1 if key in (curses.KEY_LEFT, ord("h")) else 1
-            _key = rows[field_idx][4]
+            _key = rows[field_idx].key
             if _key == "digits":
                 digits = max(1, min(4, digits + delta))
             elif _key == "allow_neg":
                 allow_neg = max(0, min(1, allow_neg + delta))
             elif _key == "op2_lo":
-                op2_lo = max(rows[field_idx][2], min(op2_hi, op2_lo + delta))
+                op2_lo = max(rows[field_idx].min_val, min(op2_hi, op2_lo + delta))
             elif _key == "op2_hi":
                 op2_hi = max(op2_lo, min(99, op2_hi + delta))
             elif _key == "decimals":

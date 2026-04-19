@@ -103,7 +103,7 @@ def _combine_spoken_nums(existing: str, incoming: str) -> str:
         return incoming  # non-integer (decimal, empty, etc.) — treat as a fresh answer
     if a < 0 or b < 0:
         return incoming  # negative — treat as a fresh answer
-    if a > b > 0:
+    if a > b >= 0:
         # 'a' is a round multiple of the next power of 10 above 'b',
         # so 'b' fills in the lower digits (e.g. 40 + 2, 100 + 42).
         power = 10 ** len(str(b))
@@ -375,23 +375,25 @@ class VoiceListener:
                     input=True,
                     frames_per_buffer=self.CHUNK_SIZE,
                 )
-            try:
-                while not self._stop.is_set():
-                    raw = stream.read(self.CHUNK_SIZE, exception_on_overflow=False)
-                    data = _amplify_audio(raw, self.INPUT_GAIN)
-                    if rec.AcceptWaveform(data):
-                        text = json.loads(rec.Result()).get("text", "").strip()
-                        if text:
-                            self._emit_text(text, final=True)
-                    else:
-                        partial = (
-                            json.loads(rec.PartialResult()).get("partial", "").strip()
-                        )
-                        if partial:
-                            self._emit_text(partial, final=False)
-            finally:
-                stream.stop_stream()
-                stream.close()
-                pa.terminate()
+                # Keep stderr suppressed for the streaming loop too: ALSA can
+                # emit noise during reads and stream teardown, not just at init.
+                try:
+                    while not self._stop.is_set():
+                        raw = stream.read(self.CHUNK_SIZE, exception_on_overflow=False)
+                        data = _amplify_audio(raw, self.INPUT_GAIN)
+                        if rec.AcceptWaveform(data):
+                            text = json.loads(rec.Result()).get("text", "").strip()
+                            if text:
+                                self._emit_text(text, final=True)
+                        else:
+                            partial = (
+                                json.loads(rec.PartialResult()).get("partial", "").strip()
+                            )
+                            if partial:
+                                self._emit_text(partial, final=False)
+                finally:
+                    stream.stop_stream()
+                    stream.close()
+                    pa.terminate()
         except Exception as exc:
             self.error = str(exc)
