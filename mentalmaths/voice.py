@@ -293,6 +293,7 @@ class VoiceListener:
             if final:
                 self._acted_on_partial = False
                 self._last_combined_num = None
+                self._enter_pending = False  # re-arm so the next enter fires
             return
 
         # "no" is a clear command — wipe the current entry.  It may appear

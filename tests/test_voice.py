@@ -484,6 +484,25 @@ class TestEmitText:
         assert listener.get_nowait() == ("clear", "")
         assert listener.get_nowait() is None
 
+    def test_enter_rearms_after_acted_on_partial_final(self):
+        """Bug: after a combined partial fires via stability check, the real vosk
+        final is suppressed but _enter_pending is left True.  A subsequent
+        standalone 'enter' (e.g. the user submits the next question without
+        first saying a number) must NOT be swallowed."""
+        listener = self._listener()
+        # Step 1: drive the combined-partial stability check to fire.
+        listener._emit_text("forty two enter", final=False)  # first — not yet stable
+        listener.get_nowait()  # ("partial", "42")
+        listener._emit_text("forty two enter", final=False)  # second — stable, fires
+        listener.get_nowait()  # ("final", "42")
+        listener.get_nowait()  # ("enter", "")
+        # Step 2: real vosk final arrives — correctly suppressed.
+        listener._emit_text("forty two enter", final=True)
+        assert listener.get_nowait() is None
+        # Step 3: subsequent standalone "enter" must now fire (flag re-armed).
+        listener._emit_text("enter", final=True)
+        assert listener.get_nowait() == ("enter", "")
+
 
 # ===========================================================================
 # Game._process_voice_events

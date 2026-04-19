@@ -110,10 +110,18 @@ class Game:
         # input can be shown in a different colour.
         q_prefix = f"{self.current.display}  =  "
         if self.buf and self.voice_partial:
-            # Show what the combined answer will be once the partial finalises,
-            # so the player can see the live result of slow digit-by-digit speech.
-            buf_disp = _combine_spoken_nums(self.buf, self.voice_partial)
-            buf_attr = curses.color_pair(4)  # yellow — still in progress
+            combined = _combine_spoken_nums(self.buf, self.voice_partial)
+            if combined != self.voice_partial:
+                # Partial extends the confirmed buffer (e.g. "40" + "2" → "42").
+                # Show the combined preview in yellow to indicate it's in-progress.
+                buf_disp = combined
+                buf_attr = curses.color_pair(4)
+            else:
+                # Partial would replace the buffer (e.g. "45" + "5" → "5").
+                # This is almost always spurious trailing audio — keep the
+                # confirmed value visible so the display doesn't flicker down.
+                buf_disp = self.buf
+                buf_attr = curses.A_BOLD | curses.color_pair(2)
         elif self.buf:
             buf_disp = self.buf
             buf_attr = curses.A_BOLD | curses.color_pair(2)
