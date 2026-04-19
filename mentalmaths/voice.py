@@ -387,7 +387,9 @@ class VoiceListener:
                                 self._emit_text(text, final=True)
                         else:
                             partial = (
-                                json.loads(rec.PartialResult()).get("partial", "").strip()
+                                json.loads(rec.PartialResult())
+                                .get("partial", "")
+                                .strip()
                             )
                             if partial:
                                 self._emit_text(partial, final=False)

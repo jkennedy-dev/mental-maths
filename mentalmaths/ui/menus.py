@@ -123,6 +123,7 @@ def run_multiselect(
 
 # ─── Menu: per-operation config ────────────────────────────────────────────────
 
+
 class Row(NamedTuple):
     label: str
     value: int

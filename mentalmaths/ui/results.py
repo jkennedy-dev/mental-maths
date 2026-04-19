@@ -39,7 +39,9 @@ def show_results(
         if guest_mode:
             _center(stdscr, 4, "(guest mode — results not saved)", curses.color_pair(4))
         elif save_error:
-            _center(stdscr, 4, "(warning: session could not be saved)", curses.color_pair(3))
+            _center(
+                stdscr, 4, "(warning: session could not be saved)", curses.color_pair(3)
+            )
 
         list_y = 5
         list_h = h - 8
